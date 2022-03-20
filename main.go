@@ -59,11 +59,14 @@ func getCurrentAlerts() map[string]CurrentAlert {
 	var alertsArray CurrentAlerts
 	jsonFile, err := ioutil.ReadFile("./input.json")
 	if err != nil {
-		fmt.Printf("\n %v", err)
+		// fmt.Printf("\n %v", err)
+		// panic(err)
+		log.Fatalf("error: %v", err)
 	}
 	err = json.Unmarshal(jsonFile, &alertsArray)
 	if err != nil {
-		fmt.Printf("\n %v", err)
+		// fmt.Printf("\n %v", err)
+		log.Fatalf("error: %v", err)
 	}
 	alerts := make(map[string]CurrentAlert)
 
@@ -114,11 +117,8 @@ func deleteAlert(alertToDelete CurrentAlert) ApiResponse {
 	return response
 }
 
-func CreateApiResponse(alertsToCreate []Alert, alertsToUpdate []CurrentAlert, alertsToDelete []CurrentAlert, config map[string]Alert) string {
+func CreateApiResponse(alertsToCreate []Alert, alertsToUpdate []CurrentAlert, alertsToDelete []CurrentAlert, config map[string]Alert) (string, string) {
 	var apiResponse []ApiResponse
-	for _, alert := range alertsToDelete {
-		apiResponse = append(apiResponse, deleteAlert(alert))
-	}
 
 	for _, alert := range alertsToCreate {
 		apiResponse = append(apiResponse, createAlert(alert))
@@ -129,14 +129,19 @@ func CreateApiResponse(alertsToCreate []Alert, alertsToUpdate []CurrentAlert, al
 		apiResponse = append(apiResponse, updateAlert(alert.Id, configAlert))
 	}
 
+	for _, alert := range alertsToDelete {
+		apiResponse = append(apiResponse, deleteAlert(alert))
+	}
+	summary := fmt.Sprintf("SUMMARY:\n CREATED:%d \n UPDATED:%d \n DELETED: %d \n", len(alertsToCreate), len(alertsToUpdate), len(alertsToDelete))
 	apiResponseJSON, err := PrettyStructJSON(apiResponse)
 	if err != nil {
 		fmt.Println(err)
 	}
-	return apiResponseJSON
+
+	return apiResponseJSON, summary
 }
 
-func compareCurrentAndConfig(current map[string]CurrentAlert, config map[string]Alert) string {
+func compareCurrentAndConfig(current map[string]CurrentAlert, config map[string]Alert) (string, string) {
 	var alertsToBeCreated []Alert
 	var alertsToBeUpdated []CurrentAlert
 	var alertsToBeDeleted []CurrentAlert
@@ -153,14 +158,14 @@ func compareCurrentAndConfig(current map[string]CurrentAlert, config map[string]
 	for _, currentAlert := range current {
 		alertsToBeDeleted = append(alertsToBeDeleted, currentAlert)
 	}
-	result := CreateApiResponse(alertsToBeCreated, alertsToBeUpdated, alertsToBeDeleted, config)
-	return result
+	result, summary := CreateApiResponse(alertsToBeCreated, alertsToBeUpdated, alertsToBeDeleted, config)
+	return result, summary
 }
 
 func main() {
 	currentAlerts := getCurrentAlerts()
 	configuredAlerts := getAlertConfig()
-	result := compareCurrentAndConfig(currentAlerts, configuredAlerts)
-	log.Info(result)
+	result, summary := compareCurrentAndConfig(currentAlerts, configuredAlerts)
+	log.Info(result, summary)
 
 }
