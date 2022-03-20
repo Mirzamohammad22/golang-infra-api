@@ -4,7 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"reflect"
+	"strings"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/google/uuid"
 	"gopkg.in/yaml.v2"
 )
 
@@ -30,8 +35,8 @@ type Alert struct {
 }
 
 type CurrentAlert struct {
-	Id      string `json:"id" yaml:"id"`
-	Created time.Time `json:"created" yaml:"created"`
+	Id      string    `json:"id" yaml:"id"`
+	Created time.Time `json:"Created" yaml:"Created"`
 	Updated time.Time `json:"updated" yaml:"updated"`
 	Alert
 }
@@ -44,22 +49,27 @@ type CurrentAlerts struct {
 	Alerts []CurrentAlert `json:"results"`
 }
 
+type ApiResponse struct {
+	AlertID string `json:"alertID"`
+	Action  string `json:"action"`
+	Body    Alert  `json:"body"`
+}
+
 func getCurrentAlerts() map[string]CurrentAlert {
 	var alertsArray CurrentAlerts
 	jsonFile, err := ioutil.ReadFile("./input.json")
 	if err != nil {
-		panic(err)
+		fmt.Printf("\n %v", err)
 	}
 	err = json.Unmarshal(jsonFile, &alertsArray)
 	if err != nil {
-		panic(err)
+		fmt.Printf("\n %v", err)
 	}
 	alerts := make(map[string]CurrentAlert)
 
 	for _, alert := range alertsArray.Alerts {
 		alerts[alert.AlertName] = alert
 	}
-
 	return alerts
 }
 
@@ -67,11 +77,11 @@ func getAlertConfig() map[string]Alert {
 	var alertsArray Alerts
 	yamlFile, err := ioutil.ReadFile("./config.yaml")
 	if err != nil {
-		panic(err)
+		fmt.Printf("\n %v", err)
 	}
 	err = yaml.Unmarshal(yamlFile, &alertsArray)
 	if err != nil {
-		panic(err)
+		fmt.Printf("\n %v", err)
 	}
 	alerts := make(map[string]Alert)
 
@@ -80,19 +90,77 @@ func getAlertConfig() map[string]Alert {
 	}
 	return alerts
 }
-func compareCurrentAndConfig(current map[string]CurrentAlert, config map[string]Alert){
-	var alertsToBeAdded []Alert
-	var alertsToBeUpdated []Alert
-	for key, configAlert := range config {
-		if currentAlert, found := current[key]; found {
-			fmt.Printf("%+v",currentAlert.Alert)
-		}
+
+func PrettyStructJSON(data interface{}) (string, error) {
+	val, err := json.MarshalIndent(data, "", "    ")
+	if err != nil {
+		return "", err
+	}
+	return string(val), nil
+}
+
+func updateAlert(alertToUpdateId string, config Alert) ApiResponse {
+	response := ApiResponse{AlertID: alertToUpdateId, Action: "Update", Body: config}
+	return response
+}
+
+func createAlert(alertToCreate Alert) ApiResponse {
+	id := strings.Replace(uuid.New().String(), "-", "", -1)
+	response := ApiResponse{AlertID: id, Action: "Create", Body: alertToCreate}
+	return response
+}
+func deleteAlert(alertToDelete CurrentAlert) ApiResponse {
+	response := ApiResponse{AlertID: alertToDelete.Id, Action: "Delete", Body: alertToDelete.Alert}
+	return response
+}
+
+func CreateApiResponse(alertsToCreate []Alert, alertsToUpdate []CurrentAlert, alertsToDelete []CurrentAlert, config map[string]Alert) string {
+	var apiResponse []ApiResponse
+	for _, alert := range alertsToDelete {
+		apiResponse = append(apiResponse, deleteAlert(alert))
 	}
 
+	for _, alert := range alertsToCreate {
+		apiResponse = append(apiResponse, createAlert(alert))
+	}
+
+	for _, alert := range alertsToUpdate {
+		configAlert := config[alert.AlertName]
+		apiResponse = append(apiResponse, updateAlert(alert.Id, configAlert))
+	}
+
+	apiResponseJSON, err := PrettyStructJSON(apiResponse)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return apiResponseJSON
 }
+
+func compareCurrentAndConfig(current map[string]CurrentAlert, config map[string]Alert) string {
+	var alertsToBeCreated []Alert
+	var alertsToBeUpdated []CurrentAlert
+	var alertsToBeDeleted []CurrentAlert
+	for key, configAlert := range config {
+		if currentAlert, found := current[key]; found {
+			if !reflect.DeepEqual(currentAlert.Alert, configAlert) {
+				alertsToBeUpdated = append(alertsToBeUpdated, currentAlert)
+			}
+			delete(current, key)
+		} else {
+			alertsToBeCreated = append(alertsToBeCreated, configAlert)
+		}
+	}
+	for _, currentAlert := range current {
+		alertsToBeDeleted = append(alertsToBeDeleted, currentAlert)
+	}
+	result := CreateApiResponse(alertsToBeCreated, alertsToBeUpdated, alertsToBeDeleted, config)
+	return result
+}
+
 func main() {
 	currentAlerts := getCurrentAlerts()
 	configuredAlerts := getAlertConfig()
-	compareCurrentAndConfig(currentAlerts,configuredAlerts)
+	result := compareCurrentAndConfig(currentAlerts, configuredAlerts)
+	log.Info(result)
 
 }
