@@ -9,15 +9,19 @@ import (
 
 	"crypto/sha1"
 
+	"encoding/base64"
+
 	log "github.com/Sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 )
 
 type Notification struct {
-	NotificationType    string `json:"notificationType" yaml:"notificationType"`
-	NotificationChannel string `json:"notificationChannel" yaml:"notificationChannel" yaml:"notificationChannel" yaml:"notificationChannel"`
-	DelayMin            int    `json:"delayMin" yaml:"delayMin"`
-	IntervalMin         int    `json:"intervalMin" yaml:"intervalMin"`
+	NotificationType     string `json:"notificationType" yaml:"notificationType"`
+	NotificationChannel  string `json:"notificationChannel" yaml:"notificationChannel"`
+	NotificationSchedule string `json:"notificationSchedule" yaml:"notificationSchedule"`
+
+	DelayMin    int `json:"delayMin" yaml:"delayMin"`
+	IntervalMin int `json:"intervalMin" yaml:"intervalMin"`
 }
 
 type MetricThreshold struct {
@@ -56,7 +60,6 @@ type SetAlertApi struct {
 }
 
 func PrettyStructJSON(data interface{}) string {
-
 	val, err := json.MarshalIndent(data, "", "    ")
 	if err != nil {
 		log.Fatalf("Error: Failed to Marshal data. %v", err)
@@ -110,7 +113,7 @@ func updateAlert(alertToUpdateId string, config AlertConfig) SetAlertApi {
 func createAlert(alertToCreate AlertConfig) SetAlertApi {
 	h := sha1.New()
 	h.Write([]byte(alertToCreate.AlertName))
-	idFull := h.Sum(nil)
+	idFull := base64.URLEncoding.EncodeToString(h.Sum(nil))
 	id := string(idFull[:24])
 	response := SetAlertApi{AlertID: id, Action: "create", Body: alertToCreate}
 	return response
@@ -121,8 +124,7 @@ func deleteAlert(alertToDelete Alert) SetAlertApi {
 }
 
 func CreateApiResponse(alertsToCreate []AlertConfig, alertsToUpdate []Alert, alertsToDelete []Alert, config map[string]AlertConfig) []SetAlertApi {
-	var apiResponse []SetAlertApi
-
+	apiResponse := make([]SetAlertApi, 0)
 	for _, alert := range alertsToCreate {
 		apiResponse = append(apiResponse, createAlert(alert))
 	}
