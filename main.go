@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"reflect"
-	"strings"
 	"time"
 
+	"crypto/sha1"
+
 	log "github.com/Sirupsen/logrus"
-	"github.com/google/uuid"
 	"gopkg.in/yaml.v2"
 )
 
@@ -50,23 +50,31 @@ type Alerts struct {
 }
 
 type SetAlertApi struct {
-	AlertID string `json:"alertID"`
-	Action  string `json:"action"`
-	Body    AlertConfig  `json:"body"`
+	AlertID string      `json:"alertID"`
+	Action  string      `json:"action"`
+	Body    AlertConfig `json:"body"`
+}
+
+func PrettyStructJSON(data interface{}) string {
+
+	val, err := json.MarshalIndent(data, "", "    ")
+	if err != nil {
+		log.Fatalf("Error: Failed to Marshal data. %v", err)
+	}
+
+	return string(val)
 }
 
 func getAlerts() map[string]Alert {
 	var alertsArray Alerts
+
 	jsonFile, err := ioutil.ReadFile("./input.json")
 	if err != nil {
-		// fmt.Printf("\n %v", err)
-		// panic(err)
-		log.Fatalf("error: %v", err)
+		log.Fatalf("Error: Failed to read input file. %v", err)
 	}
 	err = json.Unmarshal(jsonFile, &alertsArray)
 	if err != nil {
-		// fmt.Printf("\n %v", err)
-		log.Fatalf("error: %v", err)
+		log.Fatalf("Error: Failed to unmarshal input json. %v", err)
 	}
 	alerts := make(map[string]Alert)
 
@@ -80,11 +88,11 @@ func getConfig() map[string]AlertConfig {
 	var alertsArray AlertConfigs
 	yamlFile, err := ioutil.ReadFile("./config.yaml")
 	if err != nil {
-		fmt.Printf("\n %v", err)
+		log.Fatalf("Error: Failed to read config file. %v", err)
 	}
 	err = yaml.Unmarshal(yamlFile, &alertsArray)
 	if err != nil {
-		fmt.Printf("\n %v", err)
+		log.Fatalf("error:  Failed to unmarshal config yaml. %v", err)
 	}
 	alerts := make(map[string]AlertConfig)
 
@@ -94,26 +102,21 @@ func getConfig() map[string]AlertConfig {
 	return alerts
 }
 
-func PrettyStructJSON(data interface{}) (string, error) {
-	val, err := json.MarshalIndent(data, "", "    ")
-	if err != nil {
-		return "", err
-	}
-	return string(val), nil
-}
-
 func updateAlert(alertToUpdateId string, config AlertConfig) SetAlertApi {
-	response := SetAlertApi{AlertID: alertToUpdateId, Action: "Update", Body: config}
+	response := SetAlertApi{AlertID: alertToUpdateId, Action: "update", Body: config}
 	return response
 }
 
 func createAlert(alertToCreate AlertConfig) SetAlertApi {
-	id := strings.Replace(uuid.New().String(), "-", "", -1)
-	response := SetAlertApi{AlertID: id, Action: "Create", Body: alertToCreate}
+	h := sha1.New()
+	h.Write([]byte(alertToCreate.AlertName))
+	idFull := h.Sum(nil)
+	id := string(idFull[:24])
+	response := SetAlertApi{AlertID: id, Action: "create", Body: alertToCreate}
 	return response
 }
 func deleteAlert(alertToDelete Alert) SetAlertApi {
-	response := SetAlertApi{AlertID: alertToDelete.Id, Action: "Delete", Body: alertToDelete.AlertConfig}
+	response := SetAlertApi{AlertID: alertToDelete.Id, Action: "delete", Body: alertToDelete.AlertConfig}
 	return response
 }
 
@@ -135,7 +138,7 @@ func CreateApiResponse(alertsToCreate []AlertConfig, alertsToUpdate []Alert, ale
 	return apiResponse
 }
 
-func compareAlertsWithConfig(alerts map[string]Alert, alertConfigs map[string]AlertConfig) ( []AlertConfig, []Alert, []Alert){
+func compareAlertsWithConfig(alerts map[string]Alert, alertConfigs map[string]AlertConfig) ([]AlertConfig, []Alert, []Alert) {
 	var alertsToBeCreated []AlertConfig
 	var alertsToBeUpdated []Alert
 	var alertsToBeDeleted []Alert
@@ -154,17 +157,12 @@ func compareAlertsWithConfig(alerts map[string]Alert, alertConfigs map[string]Al
 	}
 	return alertsToBeCreated, alertsToBeUpdated, alertsToBeDeleted
 }
-func setAlerts(alertsToCreate []AlertConfig, alertsToUpdate []Alert, alertsToDelete []Alert, alertConfigs map[string]AlertConfig){
-
+func setAlerts(alertsToCreate []AlertConfig, alertsToUpdate []Alert, alertsToDelete []Alert, alertConfigs map[string]AlertConfig) {
 	apiResponse := CreateApiResponse(alertsToCreate, alertsToUpdate, alertsToDelete, alertConfigs)
 	summary := fmt.Sprintf("SUMMARY:\n CREATED:%d \n UPDATED:%d \n DELETED:%d \n", len(alertsToCreate), len(alertsToUpdate), len(alertsToDelete))
-	apiResponseJSON, err := PrettyStructJSON(apiResponse)
-	if err != nil {
-		fmt.Println(err)
-	}
-	log.Info("ALERT CONFIG STRUCTURE:",apiResponseJSON)
+	apiResponseJSON := PrettyStructJSON(apiResponse)
+	log.Info("ALERT CONFIG STRUCTURE:", apiResponseJSON)
 	log.Info(summary)
-
 }
 
 func main() {
