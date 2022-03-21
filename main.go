@@ -40,7 +40,7 @@ type AlertConfig struct {
 
 type Alert struct {
 	Id      string    `json:"id" yaml:"id"`
-	Created time.Time `json:"Created" yaml:"Created"`
+	Created time.Time `json:"created" yaml:"created"`
 	Updated time.Time `json:"updated" yaml:"updated"`
 	AlertConfig
 }
@@ -53,7 +53,7 @@ type Alerts struct {
 	Alerts []Alert `json:"results"`
 }
 
-type SetAlertApi struct {
+type AlertAction struct {
 	AlertID string      `json:"alertID"`
 	Action  string      `json:"action"`
 	Body    AlertConfig `json:"body"`
@@ -64,7 +64,6 @@ func PrettyStructJSON(data interface{}) string {
 	if err != nil {
 		log.Fatalf("Error: Failed to Marshal data. %v", err)
 	}
-
 	return string(val)
 }
 
@@ -105,39 +104,39 @@ func getConfig() map[string]AlertConfig {
 	return alerts
 }
 
-func updateAlert(alertToUpdateId string, config AlertConfig) SetAlertApi {
-	response := SetAlertApi{AlertID: alertToUpdateId, Action: "update", Body: config}
-	return response
+func updateAlert(alertID string, config AlertConfig) AlertAction {
+	result := AlertAction{AlertID: alertID, Action: "update", Body: config}
+	return result
 }
 
-func createAlert(alertToCreate AlertConfig) SetAlertApi {
+func createAlert(alertToCreate AlertConfig) AlertAction {
 	h := sha1.New()
 	h.Write([]byte(alertToCreate.AlertName))
 	idFull := base64.URLEncoding.EncodeToString(h.Sum(nil))
 	id := string(idFull[:24])
-	response := SetAlertApi{AlertID: id, Action: "create", Body: alertToCreate}
-	return response
+	result := AlertAction{AlertID: id, Action: "create", Body: alertToCreate}
+	return result
 }
-func deleteAlert(alertToDelete Alert) SetAlertApi {
-	response := SetAlertApi{AlertID: alertToDelete.Id, Action: "delete", Body: alertToDelete.AlertConfig}
-	return response
+func deleteAlert(alertToDelete Alert) AlertAction {
+	result := AlertAction{AlertID: alertToDelete.Id, Action: "delete", Body: alertToDelete.AlertConfig}
+	return result
 }
 
-func CreateApiResponse(alertsToCreate []AlertConfig, alertsToUpdate []Alert, alertsToDelete []Alert, config map[string]AlertConfig) []SetAlertApi {
-	apiResponse := make([]SetAlertApi, 0)
+func CreateApiStruct(alertsToCreate []AlertConfig, alertsToUpdate []Alert, alertsToDelete []Alert, config map[string]AlertConfig) []AlertAction {
+	alertActions := make([]AlertAction, 0)
 	for _, alert := range alertsToCreate {
-		apiResponse = append(apiResponse, createAlert(alert))
+		alertActions = append(alertActions, createAlert(alert))
 	}
 
 	for _, alert := range alertsToUpdate {
 		configAlert := config[alert.AlertName]
-		apiResponse = append(apiResponse, updateAlert(alert.Id, configAlert))
+		alertActions = append(alertActions, updateAlert(alert.Id, configAlert))
 	}
 
 	for _, alert := range alertsToDelete {
-		apiResponse = append(apiResponse, deleteAlert(alert))
+		alertActions = append(alertActions, deleteAlert(alert))
 	}
-	return apiResponse
+	return alertActions
 }
 
 func compareAlertsWithConfig(alerts map[string]Alert, alertConfigs map[string]AlertConfig) ([]AlertConfig, []Alert, []Alert) {
@@ -160,10 +159,10 @@ func compareAlertsWithConfig(alerts map[string]Alert, alertConfigs map[string]Al
 	return alertsToBeCreated, alertsToBeUpdated, alertsToBeDeleted
 }
 func setAlerts(alertsToCreate []AlertConfig, alertsToUpdate []Alert, alertsToDelete []Alert, alertConfigs map[string]AlertConfig) {
-	apiResponse := CreateApiResponse(alertsToCreate, alertsToUpdate, alertsToDelete, alertConfigs)
-	summary := fmt.Sprintf("SUMMARY:\n CREATED:%d \n UPDATED:%d \n DELETED:%d \n", len(alertsToCreate), len(alertsToUpdate), len(alertsToDelete))
-	apiResponseJSON := PrettyStructJSON(apiResponse)
-	log.Info("ALERT CONFIG STRUCTURE:", apiResponseJSON)
+	alertActions := CreateApiStruct(alertsToCreate, alertsToUpdate, alertsToDelete, alertConfigs)
+	summary := fmt.Sprintf("Summary:\n Created: %d \n Updated: %d \n Deleted: %d \n", len(alertsToCreate), len(alertsToUpdate), len(alertsToDelete))
+	alertActionsJSON := PrettyStructJSON(alertActions)
+	log.Info("API Alert Config Structure:", alertActionsJSON)
 	log.Info(summary)
 }
 
